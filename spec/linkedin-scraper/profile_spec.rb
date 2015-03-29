@@ -3,7 +3,9 @@ require 'linkedin-scraper'
 
 describe Linkedin::Profile do
 
-  let(:profile) { Linkedin::Profile.new('http://www.linkedin.com/in/jgrevich') }
+  let(:profile) do
+    Linkedin::Profile.new(Linkedin::HTTPClientFactory.create(), 'http://www.linkedin.com/in/jgrevich')
+  end
 
   describe '.get_profile' do
     it 'Create an instance of Linkedin::Profile class' do

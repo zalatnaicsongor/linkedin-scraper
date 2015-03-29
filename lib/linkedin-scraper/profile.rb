@@ -3,8 +3,6 @@ module Linkedin
 
   class Profile
 
-    USER_AGENTS = ['Windows IE 6', 'Windows IE 7', 'Windows Mozilla', 'Mac Safari', 'Mac FireFox', 'Mac Mozilla', 'Linux Mozilla', 'Linux Firefox', 'Linux Konqueror']
-
     ATTRIBUTES = %w(
     name
     first_name
@@ -27,7 +25,7 @@ module Linkedin
     current_companies
     recommended_visitors)
 
-    attr_reader :page, :linkedin_url
+    attr_reader :page, :linkedin_url, :browser
 
     def self.get_profile(url)
       Linkedin::Profile.new(url)
@@ -35,9 +33,15 @@ module Linkedin
       puts e
     end
 
-    def initialize(url)
+    def initialize(browser, url)
       @linkedin_url = url
-      @page         = http_client.get(url)
+      browser.goto url
+      @page         = Nokogiri::HTML(browser.html)
+    end
+
+    #Gets the profile of the authenticated user
+    def self.me(browser)
+      return Profile.new(browser, 'https://www.linkedin.com/profile/preview')
     end
 
     def name
@@ -203,13 +207,6 @@ module Linkedin
       end
       result[:address] = page.at('.vcard.hq').at('.adr').text.gsub("\n", ' ').strip if page.at('.vcard.hq')
       result
-    end
-
-    def http_client
-      Mechanize.new do |agent|
-        agent.user_agent_alias = USER_AGENTS.sample
-        agent.max_history = 0
-      end
     end
 
     def get_linkedin_company_url(link)

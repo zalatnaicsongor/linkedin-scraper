@@ -1,5 +1,15 @@
 #!/usr/bin/env ruby
-
+require 'io/console'
 require_relative '../lib/linkedin-scraper'
-profile = Linkedin::Profile.new(ARGV[0])
-puts JSON.pretty_generate JSON.parse(profile.to_json)
+#profile = Linkedin::Profile.new(ARGV[0])
+#puts JSON.pretty_generate JSON.parse(profile.to_json)
+
+print 'Linkedin Username: '
+username = gets.chomp
+print 'Linkedin password: '
+password = STDIN.noecho(&:gets)
+puts ''
+puts 'please wait until the processing has completed and please do not close the browser!'
+
+client = Linkedin::HTTPClientFactory.create_authencticated(username, password)
+puts Linkedin::Profile.me(client).skills
