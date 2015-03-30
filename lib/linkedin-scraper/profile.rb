@@ -181,9 +181,6 @@ module Linkedin
           company[:end_date] = parse_date(end_date) rescue nil
 
           company_link = node.at('h4').next.at('a')['href'] if node.at('h4').next.at('a')
-
-          result = get_company_details(company_link)
-          companies << company.merge!(result)
         end
       end
       companies
@@ -192,31 +189,6 @@ module Linkedin
     def parse_date(date)
       date = "#{date}-01-01" if date =~ /^(19|20)\d{2}$/
       Date.parse(date)
-    end
-
-    def get_company_details(link)
-      result = { :linkedin_company_url => get_linkedin_company_url(link) }
-      page = http_client.get(result[:linkedin_company_url])
-
-      result[:url] = page.at('.basic-info-about/ul/li/p/a').text if page.at('.basic-info-about/ul/li/p/a')
-      node_2 = page.at('.basic-info-about/ul')
-      if node_2
-        node_2.search('p').zip(node_2.search('h4')).each do |value, title|
-          result[title.text.gsub(' ', '_').downcase.to_sym] = value.text.strip
-        end
-      end
-      result[:address] = page.at('.vcard.hq').at('.adr').text.gsub("\n", ' ').strip if page.at('.vcard.hq')
-      result
-    end
-
-    def get_linkedin_company_url(link)
-      http = %r{http://www.linkedin.com/}
-      https = %r{https://www.linkedin.com/}
-      if http.match(link) || https.match(link)
-        link
-      else
-        "http://www.linkedin.com/#{link}"
-      end
     end
   end
 end

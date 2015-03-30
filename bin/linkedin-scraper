@@ -11,5 +11,9 @@ password = STDIN.noecho(&:gets)
 puts ''
 puts 'please wait until the processing has completed and please do not close the browser!'
 
-client = Linkedin::HTTPClientFactory.create_authencticated(username, password)
-puts Linkedin::Profile.me(client).skills
+client = Linkedin::HTTPClientFactory.create_authencticated_browser(username, password)
+puts Linkedin::Profile.me(client).to_json
+
+headlessClient = Linkedin::HTTPClientFactory.create_authenticated_headless(username, password)
+puts headlessClient.get('https://www.linkedin.com/contacts/api/contacts/?start=0&count=9999&fields=id%2Cname%2Cfirst_name%2Clast_name%2Ccompany%2Ctitle%2Cgeo_location%2Ctags%2Cemails%2Csources%2Cdisplay_sources%2Clast_interaction%2Csecure_profile_image_url&sort=-last_interaction&_=1427699884550').body
+
