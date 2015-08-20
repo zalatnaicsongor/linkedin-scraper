@@ -4,6 +4,7 @@ module Linkedin
   class Profile
 
     ATTRIBUTES = %w(
+    id
     name
     first_name
     last_name
@@ -37,11 +38,20 @@ module Linkedin
       @linkedin_url = url
       browser.goto url
       @page         = Nokogiri::HTML(browser.html)
+      @id = "li_" + browser.execute_script("return LI.Profile.data.memberId;")
     end
 
     #Gets the profile of the authenticated user
     def self.me(browser)
       return Profile.new(browser, 'https://www.linkedin.com/profile/preview')
+    end
+
+    def self.first_degree_contact(browser, id)
+      return Profile.new(browser, 'https://www.linkedin.com/contacts/view?id=' + id + '&trk=contacts-contacts-list-contact_name-0')
+    end
+
+    def id
+      @id
     end
 
     def name
@@ -81,7 +91,13 @@ module Linkedin
     end
 
     def skills
-      @skills ||= (@page.search('.skill-pill .endorse-item-name-text').map { |skill| skill.text.strip if skill.text } rescue nil)
+      @skills ||= @page.search('.skill-pill').map do |item|
+          skill_text = item.at('.endorse-item-name-text').text.gsub(/\s+/, ' ').strip if item.at('.endorse-item-name-text')
+          num_endorsments = (item.at('.num-endorsements').text.strip.to_i if item.at('.num-endorsements')) or 0
+          skill_link = item.at('.endorse-item-name-text')['href'].strip if item.at('.endorse-item-name-text')
+
+          { :skill_text => skill_text, :num_endorsments => num_endorsments, :skill_link => skill_link }
+      end
     end
 
     def past_companies

@@ -8,9 +8,9 @@ module Linkedin
     def self.create_authencticated_browser(username, password)
       browser = Watir::Browser.new
       browser.goto "linkedin.com"
-      browser.text_field(:id => 'session_key-login').set(username)
-      browser.text_field(:id => 'session_password-login').set(password)
-      browser.button(:id => 'signin').click
+      browser.text_field(:id => 'login-email').set(username)
+      browser.text_field(:id => 'login-password').set(password)
+      browser.button(:name => 'submit').click
       raise CouldNotLogInException, 'Could not log in with the supplied username / password!' if browser.text_field(:id => 'session_key-login').exists?
       return browser
     end
@@ -18,10 +18,10 @@ module Linkedin
     def self.create_authenticated_headless(username, password)
         agent = Mechanize.new 
         agent.get('https://www.linkedin.com') do |login_page|
-          login_page.form_with(:id => 'login') do |form|
-            username_field = form.field_with(:id => 'session_key-login')
+          login_page.form_with(:class => 'login-form') do |form|
+            username_field = form.field_with(:id => 'login-email')
             username_field.value = username
-            password_field = form.field_with(:id => 'session_password-login')
+            password_field = form.field_with(:id => 'login-password')
             password_field.value = password
           end.submit
           agent.get('https://www.linkedin.com') do |loggedin_page|
