@@ -10,7 +10,6 @@ module Linkedin
       browser.goto "linkedin.com"
       browser.text_field(:id => 'login-email').set(username)
       browser.text_field(:id => 'login-password').set(password)
-      browser.button(:name => 'submit').click
       raise CouldNotLogInException, 'Could not log in with the supplied username / password!' if browser.text_field(:id => 'session_key-login').exists?
       return browser
     end

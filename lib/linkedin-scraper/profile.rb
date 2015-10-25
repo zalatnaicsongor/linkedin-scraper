@@ -24,30 +24,54 @@ module Linkedin
     organizations
     past_companies
     current_companies
-    recommended_visitors)
+    recommended_visitors
+    connections
+    degree)
 
     attr_reader :page, :linkedin_url, :browser
 
-    def self.get_profile(url)
-      Linkedin::Profile.new(url)
+    def self.get_first_degree(browser, id, access_token)
+      Profile.new(browser, 'https://www.linkedin.com/contacts/view?id=' + id, access_token, 1)
     rescue => e
       puts e
     end
 
-    def initialize(browser, url)
+    def self.get_second_degree(browser, id, access_token, degree)
+      Profile.new(browser, 'https://www.linkedin.com/contacts/view?id=' + id, access_token, 2)
+    rescue => e
+      puts e
+    end
+
+    def initialize(browser, url, access_token, degree)
       @linkedin_url = url
       browser.goto url
       @page         = Nokogiri::HTML(browser.html)
-      @id = "li_" + browser.execute_script("return LI.Profile.data.memberId;")
+      @id = browser.execute_script("return LI.Profile.data.memberId;")
+      @connections = []
+      @degree = degree
+
+      ###############
+      @skills = get_skills(access_token)
     end
 
     #Gets the profile of the authenticated user
-    def self.me(browser)
-      return Profile.new(browser, 'https://www.linkedin.com/profile/preview')
+    def self.me(browser, access_token)
+      me = Profile.new(browser, 'https://www.linkedin.com/profile/preview', access_token, 0)
+      browser.goto 'https://www.linkedin.com/contacts/api/contacts/?start=0&count=9999&fields=id%2Cname%2Cfirst_name%2Clast_name%2Ccompany%2Ctitle%2Cgeo_location%2Ctags%2Cemails%2Csources%2Cdisplay_sources%2Clast_interaction%2Csecure_profile_image_url&sort=-last_interaction&_=1427699884550'
+
+      connections_raw = JSON.parse(browser.text)
+
+      connections_raw['contacts'].each do |connection|
+        connectionid = connection['id']
+        connectionid = connectionid[3, connectionid.length]
+        me.connections.push({:connection_id => connectionid, :degree => 1})
+      end
+
+      return me
     end
 
-    def self.first_degree_contact(browser, id)
-      return Profile.new(browser, 'https://www.linkedin.com/contacts/view?id=' + id + '&trk=contacts-contacts-list-contact_name-0')
+    def connections
+      @connections
     end
 
     def id
@@ -90,13 +114,34 @@ module Linkedin
       @picture ||= (@page.at('.profile-picture img').attributes['src'].value.strip if @page.at('.profile-picture img'))
     end
 
-    def skills
+    def get_skills(access_token)
+      i = 0;
       @skills ||= @page.search('.skill-pill').map do |item|
+          num_endorsments = 0
+          i = i + 1
           skill_text = item.at('.endorse-item-name-text').text.gsub(/\s+/, ' ').strip if item.at('.endorse-item-name-text')
           num_endorsments = (item.at('.num-endorsements').text.strip.to_i if item.at('.num-endorsements')) or 0
           skill_link = item.at('.endorse-item-name-text')['href'].strip if item.at('.endorse-item-name-text')
-
-          { :skill_text => skill_text, :num_endorsments => num_endorsments, :skill_link => skill_link }
+          if skill_text.nil?
+            next
+          end
+          http = Net::HTTP.new('www.linkedin.com', 443)
+          http.use_ssl = true
+          data = 'recipientId=' + @id + '&skillName=' + skill_text
+          headers = {
+            'Cookie' => 'li_at=' + access_token,
+            'Content-Type' => 'application/x-www-form-urlencoded'
+          }
+          resp, data = http.post('/profile/endorser-info-dialog', data, headers)
+          endorsment_json = JSON.parse(resp.body)
+          endorsers = []
+          if not endorsment_json["content"]["endorser_info_dialog"]["endorsers"].nil?
+            endorsment_json["content"]["endorser_info_dialog"]["endorsers"].each do |endorsment|
+              puts endorsment
+              endorsers.push({:endorser_id => endorsment["memberID"]})
+            end
+          end
+          { :skill_text => skill_text, :num_endorsments => num_endorsments, :skill_link => skill_link , :skill_order => i, :endorsment => endorsers}
       end
     end
 
@@ -175,9 +220,17 @@ module Linkedin
       end
     end
 
+    def skills
+      @skills.select! { |x| !x.nil? }
+    end
+
     def to_json
       require 'json'
       ATTRIBUTES.reduce({}){ |hash,attr| hash[attr.to_sym] = self.send(attr.to_sym);hash }.to_json
+    end
+
+    def degree
+      @degree
     end
 
     private
@@ -197,6 +250,8 @@ module Linkedin
           company[:end_date] = parse_date(end_date) rescue nil
 
           company_link = node.at('h4').next.at('a')['href'] if node.at('h4').next.at('a')
+
+          companies.push company
         end
       end
       companies
