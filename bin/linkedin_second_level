@@ -1,0 +1,31 @@
+#!/usr/bin/env ruby
+require 'io/console'
+require 'net/http'
+require 'uri'
+require 'cgi'
+require 'set'
+
+require_relative '../lib/linkedin-scraper'
+#profile = Linkedin::Profile.new(ARGV[0])
+#puts JSON.pretty_generate JSON.parse(profile.to_json)
+
+print 'Linkedin Username: '
+username = STDIN.gets.chomp()
+print 'Linkedin Password: '
+password = STDIN.noecho(&:gets)
+puts ''
+puts 'please wait until the processing has completed and please do not close the browser!'
+
+second_pass_connections = []
+
+second_level_connections = Set.new
+
+browser = Linkedin::HTTPClientFactory.create_authencticated_browser(username, password)
+
+access_token_cookie = (browser.cookies.to_a.select { |cookie| cookie[:name] == "li_at" })
+
+File.foreach(ARGV[0]).with_index do |line, line_num|
+  other2 = Linkedin::Profile.get_second_degree(browser, line.strip, access_token_cookie[0][:value])
+	File.open("2degree/" + other2.id.to_s + ".json", 'w') { |file| file.write(other2.to_json) }
+	puts "processed degree 2 " + other2.id.to_s
+end

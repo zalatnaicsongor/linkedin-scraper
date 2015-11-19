@@ -1,0 +1,31 @@
+#!/usr/bin/env ruby
+require 'io/console'
+require 'net/http'
+require 'uri'
+require 'cgi'
+require 'set'
+require 'json'
+
+dirs = ['self', '1degree', '2degree']
+
+
+files = []
+dirs.each do |dir|
+	tempFiles = Dir.glob(dir + '/*.json').select{ |e| File.file? e }
+	tempFiles.each do |tempFile|
+		files << tempFile
+	end
+end
+
+skills = Set.new
+
+files.each do |file|
+	data = JSON.parse(File.read(file))
+	data['skills'].each do |skill|
+		skills.add skill['skill_text']
+	end
+end
+
+skills.each do |skill|
+	puts skill
+end
