@@ -31,25 +31,66 @@ module Linkedin
     attr_reader :page, :linkedin_url, :browser
 
     def self.get_first_degree(browser, id, access_token)
-      Profile.new(browser, 'https://www.linkedin.com/contacts/view?id=' + id, access_token, 1)
-    rescue => e
-      puts e
+      puts id
+      person = Profile.new(browser, 'https://www.linkedin.com/profile/view?id=' + id, access_token, 1)
+
+      http = Net::HTTP.new('www.linkedin.com', 443)
+      http.use_ssl = true
+      headers = {
+        'Cookie' => 'li_at=' + access_token
+      }
+      resp = http.get('/profile/profile-v2-connections?id=' + id.to_s + '&offset=0&count=10&distance=1&type=INITIAL', headers)
+      initial_connections = JSON.parse(resp.body)
+      connections_count = initial_connections['content']['connections']['numAll']
+
+      if (not connections_count.nil?) then
+        initial_connections['content']['connections']['connections'].each do |connection|
+          person.connections.push({:connection_id => connection['memberID'], :degree => 1})
+        end
+        if connections_count > 10 then
+          howMany = (connections_count / 10).floor
+          if (connections_count / howMany > 0) then
+            howMany = howMany + 1
+          end
+
+          howMany = howMany - 1
+
+          for i in 1..howMany do
+            http = Net::HTTP.new('www.linkedin.com', 443)
+            http.use_ssl = true
+            headers = {
+              'Cookie' => 'li_at=' + access_token
+            }
+            puts '/profile/profile-v2-connections?id=' + id.to_s + '&offset=' + (i * 10).to_s + '&count=10&distance=1&type=INITIAL'
+            resp = http.get('/profile/profile-v2-connections?id=' + id.to_s + '&offset=' + (i * 10).to_s + '&count=10&distance=1&type=INITIAL', headers)
+            conns = JSON.parse(resp.body)
+            if not conns['content']['connections']['connections'].nil?
+              conns['content']['connections']['connections'].each do |connection|
+                person.connections.push({:connection_id => connection['memberID'], :degree => connection['distance']})
+              end
+            end
+          end
+
+        end
+      end
+
+      return person
     end
 
-    def self.get_second_degree(browser, id, access_token, degree)
-      Profile.new(browser, 'https://www.linkedin.com/contacts/view?id=' + id, access_token, 2)
-    rescue => e
-      puts e
+    def self.get_second_degree(browser, id, access_token)
+      person = Profile.new(browser, 'https://www.linkedin.com/profile/view?id=' + id, access_token, 2)
+      return person
     end
 
     def initialize(browser, url, access_token, degree)
       @linkedin_url = url
+      puts url
       browser.goto url
       @page         = Nokogiri::HTML(browser.html)
       @id = browser.execute_script("return LI.Profile.data.memberId;")
       @connections = []
+      @skills = []
       @degree = degree
-
       ###############
       @skills = get_skills(access_token)
     end
@@ -57,7 +98,7 @@ module Linkedin
     #Gets the profile of the authenticated user
     def self.me(browser, access_token)
       me = Profile.new(browser, 'https://www.linkedin.com/profile/preview', access_token, 0)
-      browser.goto 'https://www.linkedin.com/contacts/api/contacts/?start=0&count=9999&fields=id%2Cname%2Cfirst_name%2Clast_name%2Ccompany%2Ctitle%2Cgeo_location%2Ctags%2Cemails%2Csources%2Cdisplay_sources%2Clast_interaction%2Csecure_profile_image_url&sort=-last_interaction&_=1427699884550'
+      browser.goto 'https://www.linkedin.com/contacts/api/contacts/?start=0&count=9999&fields=id%2Cname%2Cfirst_name%2Clast_name%2Ccompany%2Ctitle%2Cgeo_location%2Ctags%2Cemails%2Csources%2Cdisplay_sources%2Clast_interaction%2Csecure_profile_image_url&sort=last_name&source=LinkedIn&_=1427699884550'
 
       connections_raw = JSON.parse(browser.text)
 
@@ -116,18 +157,23 @@ module Linkedin
 
     def get_skills(access_token)
       i = 0;
-      @skills ||= @page.search('.skill-pill').map do |item|
+      arr = []
+      @page.search('.skills-section li.endorse-item').map do |item|
           num_endorsments = 0
           i = i + 1
-          skill_text = item.at('.endorse-item-name-text').text.gsub(/\s+/, ' ').strip if item.at('.endorse-item-name-text')
-          num_endorsments = (item.at('.num-endorsements').text.strip.to_i if item.at('.num-endorsements')) or 0
-          skill_link = item.at('.endorse-item-name-text')['href'].strip if item.at('.endorse-item-name-text')
-          if skill_text.nil?
+          if item.attributes['data-endorsed-item-name'].nil?
             next
           end
+
+          skill_text = item.attributes['data-endorsed-item-name'].value
+
+
+          num_endorsments = (item.at('.num-endorsements').text.strip.to_i if item.at('.num-endorsements')) or 0
+          skill_link = item.at('.endorse-item-name-text')['href'].strip if item.at('.endorse-item-name-text')
+
           http = Net::HTTP.new('www.linkedin.com', 443)
           http.use_ssl = true
-          data = 'recipientId=' + @id + '&skillName=' + skill_text
+          data = 'recipientId=' + @id + '&skillName=' + CGI::escape(skill_text)
           headers = {
             'Cookie' => 'li_at=' + access_token,
             'Content-Type' => 'application/x-www-form-urlencoded'
@@ -137,12 +183,12 @@ module Linkedin
           endorsers = []
           if not endorsment_json["content"]["endorser_info_dialog"]["endorsers"].nil?
             endorsment_json["content"]["endorser_info_dialog"]["endorsers"].each do |endorsment|
-              puts endorsment
               endorsers.push({:endorser_id => endorsment["memberID"]})
             end
           end
-          { :skill_text => skill_text, :num_endorsments => num_endorsments, :skill_link => skill_link , :skill_order => i, :endorsment => endorsers}
+          arr << { :skill_text => skill_text, :num_endorsments => num_endorsments, :skill_link => skill_link , :skill_order => i, :endorsment => endorsers}
       end
+      return arr
     end
 
     def past_companies
@@ -221,7 +267,7 @@ module Linkedin
     end
 
     def skills
-      @skills.select! { |x| !x.nil? }
+      @skills
     end
 
     def to_json

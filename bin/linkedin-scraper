@@ -2,6 +2,8 @@
 require 'io/console'
 require 'net/http'
 require 'uri'
+require 'cgi'
+require 'set'
 
 require_relative '../lib/linkedin-scraper'
 #profile = Linkedin::Profile.new(ARGV[0])
@@ -14,6 +16,10 @@ password = STDIN.noecho(&:gets)
 puts ''
 puts 'please wait until the processing has completed and please do not close the browser!'
 
+second_pass_connections = []
+
+second_level_connections = Set.new
+
 browser = Linkedin::HTTPClientFactory.create_authencticated_browser(username, password)
 
 access_token_cookie = (browser.cookies.to_a.select { |cookie| cookie[:name] == "li_at" })
@@ -21,16 +27,42 @@ access_token_cookie = (browser.cookies.to_a.select { |cookie| cookie[:name] == "
 mechanize = Mechanize.new
 
 me = Linkedin::Profile.me(browser, access_token_cookie[0][:value])
+File.open("self/" + me.id.to_s + ".json", 'w') { |file| file.write(me.to_json) }
 
-#me.connections.each do |connection|
-#	puts connection
-#end
+i = 0
+me.connections.each do |connection|
+	if connection[:connection_id] == 11222330 then
+		next
+	end
+	other = Linkedin::Profile.get_first_degree(browser, connection[:connection_id], access_token_cookie[0][:value])
+	File.open("1degree/" + other.id.to_s + ".json", 'w') { |file| file.write(other.to_json) }
+	puts "processed degree 1 " + other.id.to_s
+	other.connections.each do |secondLevel|
+		if not me.connections.include? secondLevel then
+			second_pass_connections << secondLevel
+		end
+	end
+	i = i + 1
+end
 
-File.open(me.id + "_self.json", 'w') { |file| file.write(me.to_json) }
+second_pass_connections.each do |second_pass_connection|
+	if second_pass_connection[:degree] == 2 then
+		second_level_connections.add(second_pass_connection[:connection_id])
+		i = i + 1
+	end
+end
 
-#other = Linkedin::Profile.get_profile(browser, me.connections[2])
-#File.open(other.id + "_1degree.json", 'w') { |file| file.write(other.to_json) }
-#puts other.to_json
+puts "--------- FIRST DEGREE DONE --------"
 
-#headlessClient = Linkedin::HTTPClientFactory.create_authenticated_headless(username, password)
-#puts headlessClient.get('https://www.linkedin.com/contacts/api/contacts/?start=0&count=9999&fields=id%2Cname%2Cfirst_name%2Clast_name%2Ccompany%2Ctitle%2Cgeo_location%2Ctags%2Cemails%2Csources%2Cdisplay_sources%2Clast_interaction%2Csecure_profile_image_url&sort=-last_interaction&_=1427699884550').body
+somefile = File.open("second_degree_ids.txt", "w")
+
+second_level_connections.each do |second_level_connection|
+	#other2 = Linkedin::Profile.get_second_degree(browser, second_level_connection, access_token_cookie[0][:value])
+	#File.open("2degree/" + other2.id.to_s + ".json", 'w') { |file| file.write(other2.to_json) }
+	#puts "processed degree 2 " + other2.id.to_s
+	somefile.puts second_level_connection
+end
+
+somefile.close
+
+puts "=======DONE======= " + i.to_s
